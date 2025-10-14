@@ -1,0 +1,22 @@
+# Example comparison code
+from survey_assist_utils.evaluation.coder_alignment import LabelAccuracy, ColumnConfig
+from survey_assist_utils.evaluation.metrics import calc_accuracy_metrics
+
+# Prepare your DataFrame 'df' with required columns
+
+# Setup for LabelAccuracy
+column_config = ColumnConfig(
+    model_label_cols=["sa_initial_codes"],
+    model_score_cols=["model_score"],  # adjust as needed
+    clerical_label_cols=["clerical_codes"],
+    id_col="id"
+)
+label_acc = LabelAccuracy(df, column_config)
+label_acc_result = label_acc.get_accuracy(extended=True)
+
+# Setup for metrics.py
+metrics_result = calc_accuracy_metrics(df, model_col="sa_initial_codes", truth_col="clerical_codes")
+
+# Print and compare
+print("LabelAccuracy.get_accuracy result:", label_acc_result)
+print("metrics.py calc_accuracy_metrics result:", metrics_result.dict())
