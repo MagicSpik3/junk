@@ -1,58 +1,152 @@
-This example workflow file is the key to the whole analysis. It confirms your assessment and clearly shows the value of the new object-oriented (OO) approach in `SA-160c`.
+import pandas as pd
+import numpy as np
+import os
+import logging
 
-The divergence is a classic shift from a procedural script to a configurable, reusable toolkit. The value is gained in flexibility, maintainability, and clarity.
+# --- Configuration ---
+# Point this to your main data file (e.g., unit_test_all.csv)
+SOURCE_FILE = "unit_test_all.csv"
+OUTPUT_DIR = "test_subsets/"
 
-Here is a breakdown of the new workflow and the divergences it reveals.
+# Define the columns to check, based on your SA-160c config
+CLERICAL_COLS = [f"CC_{i}" for i in range(1, 4)]  # CC_1, CC_2, CC_3
+MODEL_COLS = [f"SA_{i}" for i in range(1, 6)]    # SA_1 ... SA_5
+ALL_LABEL_COLS = CLERICAL_COLS + MODEL_COLS
+ID_COL = "unique_id"
 
----
+# Define what we consider "empty" for counting purposes
+# These are based on the INVALID_VALUES in sic_codes.py and common NaNs
+EMPTY_VALUES = [
+    "", ".", " ", np.nan, None, "NAN", "NaN", "nan",
+    "None", "Null", "<NA>",
+]
 
-### 1. The `SA-160c` Workflow: Configuration as Objects
+# --- Helper Functions ---
 
-The primary value you identified comes from this new pattern, which is perfectly demonstrated in the example.
+def load_data(filepath):
+    """Loads the source CSV, forcing all columns to string type."""
+    try:
+        # Load all data as string to preserve leading zeros / lack thereof
+        return pd.read_csv(filepath, dtype=str, keep_default_na=False)
+    except FileNotFoundError:
+        logging.error(f"Error: Source file not found at {filepath}")
+        return None
 
-* **Old Way (`main`):** To run an analysis, you would have to call a function like `prep_model_codes` and pass a long, rigid list of arguments (`codes_col`, `alt_codes_col`, `out_col`, `threshold`, etc.).
-* **New Way (`SA-160c`):** The new workflow is much cleaner and is built around two types of objects:
+def find_special_value(df, cols, value):
+    """Finds the first row where the special value exists in any of the specified columns."""
+    mask = (df[cols] == value).any(axis=1)
+    return df[mask].head(1)
 
-    1.  **Configuration Objects:** You first define *what* your data looks like using a config object. The `ColumnConfig` cleanly encapsulates all column names (`model_label_cols`, `clerical_label_cols`, `id_col`) into a single variable (`config_main`). This is far superior to passing many string arguments.
+def find_missing_leading_zero(df, cols):
+    """Finds the first row with a value that is numeric, unpadded, and not '0'."""
+    
+    def is_unpadded(s):
+        """Check if a string is numeric and needs padding."""
+        if not isinstance(s, str):
+            return False
+        # Is it a number?
+        if s.isdigit():
+            # Is it between 1 and 4 digits, and not just '0'?
+            if 0 < len(s) < 5 and s != '0':
+                return True
+        return False
 
-    2.  **Analyzer Objects:** You then pass your raw DataFrame and your config object to a main "analyzer" class, `LabelAccuracy`. This single object (`analyzer_main`) becomes the engine for all your analysis.
+    # Apply the check across all label columns and find the first row
+    mask = df[cols].applymap(is_unpadded).any(axis=1)
+    return df[mask].head(1)
 
-* **Method-Based Analysis:**
-    Instead of importing and calling multiple, separate functions, you now simply call methods on the `analyzer_main` object. The example file shows this clearly:
-    * `analyzer_main.get_accuracy(...)`
-    * `analyzer_main.get_jaccard_similarity()`
-    * `analyzer_main.get_summary_stats()`
-    * `analyzer_main.plot_threshold_curves()`
-    * `analyzer_main.save_output(...)`
+def find_unambiguous(df):
+    """Finds the first row marked as Unambiguous."""
+    # Check for various string versions of "true"
+    true_values = ["True", "true", "TRUE", "1"]
+    if "Unambiguous" not in df.columns:
+        logging.warning("Warning: 'Unambiguous' column not found.")
+        return pd.DataFrame(columns=df.columns)
+        
+    mask = df["Unambiguous"].isin(true_values)
+    return df[mask].head(1)
 
-This OO pattern is the core value-add. It makes the analysis pipeline reusable for *any* file that can be described by a `ColumnConfig`, whereas the `main` branch code was tightly coupled to one specific file structure.
+def find_n_answers(df, cols, n):
+    """Finds the first row with exactly 'n' non-empty answers."""
+    # Replace all defined "empty" values with NaN
+    temp_df = df[cols].replace(EMPTY_VALUES, np.nan)
+    
+    # Count how many are *not* NaN
+    answer_counts = temp_df.notna().sum(axis=1)
+    
+    mask = (answer_counts == n)
+    return df[mask].head(1)
 
----
+def save_subset(df, filename):
+    """Saves a dataframe to the output directory."""
+    if df.empty:
+        logging.warning(f"No data found for '{filename}'. CSV not created.")
+        return
+    
+    # Ensure the output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    filepath = os.path.join(OUTPUT_DIR, filename)
+    df.to_csv(filepath, index=False)
+    logging.info(f"Successfully saved '{filename}'")
 
-### 2. The *Other* Divergence: A Refactor in Progress
+# --- Main Execution ---
 
-This example file also reveals a second, more subtle divergence: the `SA-160c` branch itself appears to be in the *middle* of an internal refactor.
+def main():
+    """Main function to run all filters and save subsets."""
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
+    
+    df = load_data(SOURCE_FILE)
+    if df is None:
+        return
 
-* **The Clue:** The `data_cleaner.py` file you provided defines a `DataCleaner` class. Logically, you would expect this class to be used *first* to clean the data, which is then passed to `LabelAccuracy` for analysis.
-* **The Reality:** The example script *does not* import or use `DataCleaner` at all. It loads the raw CSV and passes the DataFrame *directly* to the `LabelAccuracy` class.
-* **Why?** Because the `LabelAccuracy` class (in `coder_alignment.py`) has its *own* internal cleaning methods (`_validate_inputs`, `_filter_unambiguous`, `_clean_dataframe`).
+    logging.info(f"Loaded {len(df)} rows from {SOURCE_FILE}\n")
+    logging.info("Starting filters...")
 
-This implies the following:
-1.  The cleaning logic was **originally built directly inside** the `LabelAccuracy` class.
-2.  The `DataCleaner` class (in `data_cleaner.py`) was created later as a **refactor** to extract this cleaning logic into its own reusable tool. This is supported by the note in `data_cleaner.py` stating it is "part way through refactoring".
-3.  The `example_coder_alignment.py` script simply **hasn't been updated yet** to use the new, separate `DataCleaner` class.
+    # 1. '4+' item
+    save_subset(
+        find_special_value(df, CLERICAL_COLS, "4+"),
+        "subset_1_clerical_four_plus.csv"
+    )
 
-This shows the branch is moving towards an even better design: separating *data cleaning* (`DataCleaner`) from *data analysis* (`LabelAccuracy`), which is a very strong and maintainable pattern.
+    # 2. '-9' item
+    save_subset(
+        find_special_value(df, CLERICAL_COLS, "-9"),
+        "subset_2_clerical_minus_nine.csv"
+    )
 
----
+    # 3. Missing leading zero
+    save_subset(
+        find_missing_leading_zero(df, ALL_LABEL_COLS),
+        "subset_3_missing_leading_zero.csv"
+    )
 
-### Assessment Summary
+    # 4. Unambiguous item
+    save_subset(
+        find_unambiguous(df),
+        "subset_4_unambiguous_true.csv"
+    )
 
-Your assessment is correct. The value of `SA-160c` is not in the metric calculation (which was back-ported to `main`) but in the **object-oriented handling** of the entire analysis pipeline.
+    # 5. Differing numbers of clerical answers
+    save_subset(
+        find_n_answers(df, CLERICAL_COLS, 1),
+        "subset_5_clerical_1_answer.csv"
+    )
+    save_subset(
+        find_n_answers(df, CLERICAL_COLS, 2),
+        "subset_5_clerical_2_answers.csv"
+    )
+    save_subset(
+        find_n_answers(df, CLERICAL_COLS, 3),
+        "subset_5_clerical_3_answers.csv"
+    )
 
-* `main`: A procedural script.
-* `SA-160c`: A reusable, object-oriented toolkit.
-
-This new workflow is superior in terms of reusability, maintainability, and clarity. The branch is also actively improving itself by separating concerns (cleaning vs. analysis).
-
-The final piece of this puzzle would be to see the data that this new system is designed to handle. To fully grasp the context, could you please upload the **`unit_test_all.csv`** file that is loaded in the example script?
+    # 6. Differing numbers of model (LLM) answers
+    save_subset(
+        find_n_answers(df, MODEL_COLS, 1),
+        "subset_6_model_1_answer.csv"
+    )
+    # Just picking a few numbers, you can change 3 and 5 to any count
+    save_subset(
+        find_n_answers(df, MODEL_COLS, 3),
+        "subset_6_model_3_answers.csv"
