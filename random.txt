@@ -1,0 +1,42 @@
+def prep_model_codes(  # noqa:PLR0913
+    input_df: pd.DataFrame,
+    codes_col: str | None = "initial_code",
+    alt_codes_col: str | None = "alt_sic_candidates",
+    out_col: str = "model_codes",
+    alt_codes_name: str = "code",
+    threshold: float = 0,
+    digits: int = 5,
+) -> pd.DataFrame:
+    """Prepare the input DataFrame containing model-predicted SIC codes.
+    
+    Cleans codes to valid n-digit SIC codes and identifies invalid codes. 
+    Optionally extracts alternative candidate codes if the primary code is missing.
+
+    Args:
+        input_df: Input DataFrame to be prepared.
+        codes_col: Column name for initial model predicted code.
+        alt_codes_col: Column name for alternative codes (list of dicts).
+        out_col: Column name for the output cleaned model codes.
+        alt_codes_name: Key name to extract codes from alternative predictions.
+        threshold: Likelihood threshold for pruning alternative candidates.
+        digits: Number of digits to which SIC codes should be cleaned.
+
+    Returns:
+        A DataFrame containing:
+            - ID_COL: Unique identifier.
+            - out_col: Set of cleaned model codes.
+            - invalid_codes: Set of original codes that could not be cleaned.
+
+    Raises:
+        ValueError: If required columns are missing in the input DataFrame.
+    """
+
+
+3. A quick check on sic_codes.py
+
+I noticed get_clean_n_digit_codes in your other file also has the type hint in the Returns section. You might want to quickly nip that one too if you are doing a cleanup commit.
+
+Returns:
+        A tuple containing:
+            - cleaned_set: Set of cleaned n-digit SIC code strings.
+            - invalid_set: Set of original codes that could not be cleaned.
