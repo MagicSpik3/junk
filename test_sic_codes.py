@@ -117,6 +117,24 @@ def test_get_clean_n_digit_codes_section():
     assert invalid == set()
 
 
+def test_get_clean_n_digit_codes_logs_invalid_item(caplog):
+    # Ensure we capture WARNING logs for this test
+    with caplog.at_level("WARNING"):
+        # Input contains an item that will produce no valid codes
+        cleaned, invalid = get_clean_n_digit_codes({"98765"}, n=5)
+
+    # Assert logging happened with the expected message fragment
+    assert any(
+        "has no valid codes" in record.message.lower() for record in caplog.records
+    ), "Expected a warning about invalid codes to be logged"
+
+    # And the invalid item is recorded in the invalid set
+    assert "98765" in invalid
+    # cleaned may be empty depending on your cleaning logic
+    assert isinstance(cleaned, set)
+    assert isinstance(invalid, set)
+
+
 def test_validate_sic_codes():
     assert validate_sic_codes("01110") == {"01110"}
     valid = validate_sic_codes(["01110", "99999", "A"])
@@ -136,15 +154,29 @@ def test_extract_alt_candidates_n_digit_codes():
         {"code": "86101", "likelihood": 0.8},
         {"code": "86210", "likelihood": 0.6},
     ]
-    result = extract_alt_candidates_n_digit_codes(
+    result_valid, result_invalid = extract_alt_candidates_n_digit_codes(
         candidates, code_name="code", score_name="likelihood", threshold=0.7
     )
-    assert result == {"86101"}
+    assert result_valid == {"86101"}
+    assert result_invalid == set()
     # No pruning
-    result2 = extract_alt_candidates_n_digit_codes(
+    result2_valid, result2_invalid  = extract_alt_candidates_n_digit_codes(
         candidates, code_name="code", score_name="likelihood", threshold=0
     )
-    assert result2 == {"86101", "86210"}
+    assert result2_valid == {"86101", "86210"}
+    assert result2_invalid == set()
+
+
+def test_extract_alt_candidates_n_digit_codes_invalid():
+    candidates = [
+        {"code": "86101", "likelihood": 0.8},
+        {"code": "12345", "likelihood": 0.6},
+    ]
+    result_valid, result_invalid = extract_alt_candidates_n_digit_codes(
+        candidates, code_name="code", score_name="likelihood", threshold=0.7
+    )
+    assert result_valid == {"86101"}
+    assert result_invalid == {"12345"}
 
 
 @pytest.mark.parametrize(
