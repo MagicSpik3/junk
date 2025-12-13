@@ -1,4 +1,6 @@
-"""Read clerical data from standard clerical format."""
+"""Read clerical data from standard clerical format.
+Cleans and prepares clerical and model SIC codes for further processing.
+"""
 
 import logging
 from dataclasses import dataclass
@@ -250,8 +252,34 @@ def prep_model_codes(  # noqa:PLR0913
     digits: int = 5,
 ) -> pd.DataFrame:
     """Prepare the input DataFrame containing model-predicted SIC codes.
+    This function hasd been overloaded to accept either individual parameters
+    or a single configuration dataclass.
 
-    (See docstring in original file)
+    Cleans codes to valid n-digit SIC codes and identifies invalid codes.
+    Optionally extracts alternative candidate codes if the primary code is missing.
+
+    Args: (legacy style)
+        input_df: Input DataFrame to be prepared.
+        codes_col: Column name for initial model predicted code.
+        alt_codes_col: Column name for alternative codes (list of dicts).
+        out_col: Column name for the output cleaned model codes.
+        alt_codes_name: Key name to extract codes from alternative predictions.
+        threshold: Likelihood threshold for pruning alternative candidates.
+        digits: Number of digits to which SIC codes should be cleaned.
+
+    Args: (config style)
+        input_df: Input DataFrame to be prepared.
+        codes_col: ModelPrepConfig dataclass containing all configuration.
+
+    Returns:
+        A DataFrame containing:
+            - ID_COL: Unique identifier.
+            - out_col: Set of cleaned model codes.
+            - invalid_codes: Set of original codes that could not be cleaned.
+
+    Raises:
+        ValueError: If required columns are missing in the input DataFrame.
+
     """
     # 1. Resolve Configuration
     cfg = _resolve_config(
@@ -260,9 +288,9 @@ def prep_model_codes(  # noqa:PLR0913
 
     # 2. Process Primary Codes (Creates the base Output DF)
     out_df = _process_primary_codes(input_df, cfg)
-        
+
     # 3. Fill Gaps with Alternatives (Updates Output DF in place/returns it)
     out_df = _fill_missing_from_alternatives(out_df, input_df, cfg)
-    
+
     # 4. Return Final Result
     return out_df[[ID_COL, cfg.out_col, cfg.invalid_col]]
