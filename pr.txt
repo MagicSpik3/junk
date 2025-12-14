@@ -1,0 +1,66 @@
+📌 Pull Request Template
+
+Background SIC code cleaning functions currently reject invalid codes silently. This makes it difficult to trace why specific codes are dropped during processing.
+
+Description This PR modifies the cleaning functions to capture invalid codes instead of discarding them. These codes are now logged as warnings and stored in a new DataFrame column (e.g., clerical_codes_invalid) alongside the cleaned results.
+
+Additionally, prep_model_codes has been refactored to reduce cyclomatic complexity by moving logic into helper functions and introducing a configuration dataclass.
+
+📜 Changes Introduced
+
+    sic_codes.py:
+
+        Updated get_clean_n_digit_codes and extract_alt_candidates_n_digit_codes to return a tuple: (valid_codes, invalid_codes).
+
+prep_data.py:
+
+    Added ModelPrepConfig dataclass to group configuration arguments.
+
+Overloaded prep_model_codes to accept ModelPrepConfig while maintaining support for legacy arguments.
+
+Refactored prep_model_codes to use helper functions (make_initial_model_codes, make_alt_model_codes) for processing primary and alternative codes.
+
+Added logic to merge invalid codes from both primary and alternative predictions into the *_invalid column.
+
+Added logging warnings when invalid codes are encountered.
+
+Feature implementation:
+
+    feat: Capture and log invalid SIC codes.
+
+    chore: Refactor prep_model_codes using ModelPrepConfig and helper functions.
+
+✅ Checklist
+
+Please confirm you've completed these checks before requesting a review.
+
+    [x] Code is formatted using Black
+
+    [x] Imports are sorted using isort
+
+    [x] Code passes linting with Ruff, Pylint, and Mypy
+
+    [x] Security checks pass using Bandit
+
+    [x] API and Unit tests are written and pass using pytest
+
+    [x] DocStrings follow Google-style and are added as per Pylint recommendations
+
+🔍 How to Test
+
+Existing pipelines should run without modification due to the overloaded function signature.
+
+Run the updated unit tests to verify the invalid code capture and invalid mixing logic:
+Bash
+
+pytest tests/data_cleaning/test_prep_data.py
+pytest tests/data_cleaning/test_sic_codes.py
+
+Expected Output Example:
+
+Codes that cannot be cleaned are now visible in the _invalid column:
+Plaintext
+
+unique_id      model_codes      model_codes_invalid
+EV043453       {39000}          {038xx}
+EV000099       {}               {BadCode123}
